@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        .country-select {
+            position: relative;
+            display: inline-block;
+        }
+
+        .country-select select {
+            padding: 8px 35px 8px 45px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background: #fff;
+            width: 200px;
+            cursor: pointer;
+        }
+
+        .country-select::before {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 25px;
+            height: 25px;
+            background-size: cover;
+            pointer-events: none;
+        }
+
+        /* Individual country flags using background images */
+        .country-select.us::before {
+            background-image: url('https://flagcdn.com/w40/us.png');
+        }
+
+        .country-select.in::before {
+            background-image: url('https://flagcdn.com/w40/in.png');
+        }
+
+        .country-select.ae::before {
+            background-image: url('https://flagcdn.com/w40/ae.png');
+        }
+
+        /* Arrow indicator */
+        .country-select::after {
+            content: '▼';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Add this to your footer section -->
+    <div class="country-select us">
+        <select onchange="this.parentElement.className = 'country-select ' + this.value">
+            <option value="us">United States</option>
+            <option value="in">India</option>
+            <option value="ae">UAE</option>
+        </select>
+    </div>
+</body>
+</html>
