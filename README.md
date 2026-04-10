@@ -40,6 +40,6 @@ This is a personal project — feel free to suggest improvements or send PRs if 
 
 ---
 
-**Author:** You (personal project)
+**Author:**  Himanshu Gupta
 
 *Inspired by Zomato — for learning and practice.*
