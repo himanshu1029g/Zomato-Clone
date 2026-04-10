@@ -1,3 +1,4 @@
+
 # Multi-stage build for Zomato Clone
 FROM node:18-alpine AS builder
 
@@ -27,5 +28,6 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
 
-# Start nginx
+
+
 CMD ["nginx", "-g", "daemon off;"]
