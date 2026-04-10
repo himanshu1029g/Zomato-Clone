@@ -1,231 +1,199 @@
-# 🍜 Zomato Clone - Docker & Jenkins Deployment
+# 🍜 Zomato Clone - Docker & Jenkins CI/CD Deployment
 
-**A fully containerized Zomato-like UI project with complete CI/CD pipeline ready for production deployment on AWS.**
+**A fully containerized Zomato-like UI project with a complete CI/CD pipeline deployed on AWS EC2 using Jenkins and Docker.**
 
 ---
 
 ## 📁 Project Structure
 
-```
 Zomato_Clone/
 ├── src/                          # Application source files
 │   ├── index.html                # Main page
 │   ├── just.html                 # Secondary page
 │   ├── style.css                 # Styles
-│   ├── image/                    # Assets
-│   └── miantop.avif, miantop2.avif
+│   └── image/                    # Assets
 ├── nginx/
-│   └── nginx.conf                # Web server config
+│   └── nginx.conf                # Nginx web server config
 ├── docs/
 │   ├── DEPLOYMENT.md             # Complete deployment guide
 │   ├── DOCKER_SETUP.md           # Quick Docker setup
 │   └── JENKINS_CI-CD.md          # Jenkins pipeline guide
-├── Dockerfile                    # Docker image
-├── Jenkinsfile                   # CI/CD pipeline
-├── docker-compose.yml            # Local development
+├── Dockerfile                    # Multi-stage Docker build
+├── Jenkinsfile                   # CI/CD Pipeline definition
+├── docker-compose.yml            # Container orchestration
 ├── .dockerignore
 ├── .gitignore
 └── README.md
-```
+---
 
 ## 🚀 Quick Start
 
-### Local Development with Docker
+### Run Locally with Docker
 
 ```bash
-# Build image
-docker build -t zomato-clone:latest .
+# Pull from DockerHub
+docker pull him1029g/zomato_clone:latest
 
 # Run container
-docker-compose up -d
+docker run -d -p 8080:80 him1029g/zomato_clone:latest
 
-# Access application
+# Access app
 open http://localhost:8080
-
-# View logs
-docker-compose logs -f
-
-# Stop container
-docker-compose down
 ```
 
-### Deploy to AWS
+### Run with Docker Compose
 
 ```bash
-# Login to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin YOUR_ECR_URL
+docker compose up -d
+# Access at http://localhost:8080
 
-# Push image
-docker tag zomato-clone:latest YOUR_ECR_URL/zomato-clone:latest
-docker push YOUR_ECR_URL/zomato-clone:latest
-
-# Deploy to ECS
-aws ecs update-service --cluster zomato-cluster --service zomato-service --force-new-deployment
+docker compose down
 ```
 
-### CI/CD with Jenkins
+---
 
-1. Create Jenkins Pipeline job
-2. Link GitHub repository
-3. Configure with Jenkinsfile
-4. Enable GitHub webhook
-5. Push code → Auto-deploy
+## 🔄 CI/CD Pipeline (Jenkins)
 
-## 📚 Documentation
+This project uses a **Jenkins Declarative Pipeline** with 5 stages:
+GitHub Push → Jenkins Trigger → Build Image → Push to DockerHub → Deploy via Docker Compose
 
-| Guide | Purpose |
-|-------|---------|
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | **Step-by-step** deployment guide for Docker, AWS, Jenkins |
-| [DOCKER_SETUP.md](docs/DOCKER_SETUP.md) | Quick Docker commands |
-| [JENKINS_CI-CD.md](docs/JENKINS_CI-CD.md) | Jenkins pipeline setup |
+### Jenkinsfile (Pipeline Stages)
 
-## ✨ Features
+```groovy
+pipeline {
+    agent { label "vinod" }
+    stages {
 
-- ✅ **Containerized** - Docker with Nginx
-- ✅ **Production-Ready** - Security headers, health checks, gzip
-- ✅ **CI/CD Pipeline** - Automated Jenkins deployment
-- ✅ **AWS Ready** - ECR, ECS, EC2 compatible
-- ✅ **Auto-Deploy** - GitHub webhook integration
-- ✅ **Monitoring** - Logs, health checks enabled
+        stage("Code") {
+            steps {
+                echo "This is Cloning the Code"
+                git url: "https://github.com/himanshu1029g/Zomato-Clone.git", branch: "main"
+                echo "Code clone successfully"
+            }
+        }
+
+        stage("Build") {
+            steps {
+                echo "This is Building the Code"
+                sh "docker build -t zomato_clone:latest ."
+            }
+        }
+
+        stage("Test") {
+            steps {
+                echo "This is Testing the Code"
+            }
+        }
+
+        stage("Push to DockerHub") {
+            steps {
+                echo "This is pushing the img to docker hub"
+                withCredentials([usernamePassword(
+                    credentialsId: "dockerhubcred",
+                    passwordVariable: "dockerHubPass",
+                    usernameVariable: "dockerHubUser"
+                )]) {
+                    sh "docker login -u ${dockerHubUser} -p ${dockerHubPass}"
+                    sh "docker image tag zomato_clone:latest him1029g/zomato_clone:latest"
+                    sh "docker push him1029g/zomato_clone:latest"
+                }
+            }
+        }
+
+        stage("Deployment") {
+            steps {
+                echo "This is Deploying the Code"
+                sh "docker compose down --remove-orphans || true"
+                sh "docker compose up -d"
+            }
+        }
+
+    }
+}
+```
+
+### Pipeline Stage Details
+
+| Stage | What it does |
+|---|---|
+| **Code** | Clones latest code from GitHub main branch |
+| **Build** | Builds Docker image `zomato_clone:latest` |
+| **Test** | Runs test checks |
+| **Push to DockerHub** | Tags and pushes image to `him1029g/zomato_clone` |
+| **Deployment** | Tears down old container and starts fresh via Docker Compose |
+
+---
 
 ## 🐳 Docker
 
-- **Base**: nginx:alpine (~40MB)
-- **Stages**: Multi-stage build optimization
-- **Port**: 80 (mapped to 8080)
-- **Features**: Compression, caching, security headers
+- **Base Image**: `nginx:alpine` (~40MB)
+- **Build**: Multi-stage (node:18-alpine builder → nginx:alpine)
+- **Port**: Container runs on `80`, mapped to host `8080`
+- **Features**: Gzip compression, security headers, health checks
 
-## 🔄 CI/CD Pipeline
+### DockerHub Image
 
+```bash
+docker pull him1029g/zomato_clone:latest
 ```
-GitHub Push → Webhook → Jenkins Build → Docker Build → ECR Push → ECS Deploy
-```
 
-**Stages:**
-1. Checkout code
-2. Build Docker image
-3. Run health checks
-4. Login to AWS ECR
-5. Push to registry
-6. Deploy to ECS
-7. Verify deployment
+---
 
-## ☁️ Cloud Deployment
+## ☁️ Infrastructure
 
-**Supported:**
-- AWS ECS (containers)
-- AWS EC2 + Docker Compose
-- AWS ECR (registry)
-- Docker Hub
+| Component | Tool |
+|---|---|
+| Cloud Server | AWS EC2 (Ubuntu) |
+| CI/CD | Jenkins (Declarative Pipeline) |
+| Agent | Jenkins Agent Node ("vinod") |
+| Container Runtime | Docker + Docker Compose |
+| Image Registry | DockerHub (`him1029g/zomato_clone`) |
+| Web Server | Nginx (inside container) |
+
+---
 
 ## 🔧 Tech Stack
 
 - **Frontend**: HTML5, CSS3
-- **Server**: Nginx (Alpine)
-- **Container**: Docker, Docker Compose
+- **Web Server**: Nginx (Alpine)
+- **Containerization**: Docker, Docker Compose
 - **CI/CD**: Jenkins
-- **Cloud**: AWS
+- **Cloud**: AWS EC2
+- **Registry**: DockerHub
 
-## 📋 Prerequisites
+---
 
-### Local Development
-- Docker Desktop installed
-- Git installed
+## ✨ Features
 
-### AWS Deployment
-- AWS Account
-- IAM user (ECR/ECS permissions)
-- AWS CLI configured
+- ✅ Fully Containerized with Docker
+- ✅ Automated CI/CD via Jenkins Pipeline
+- ✅ DockerHub Integration for image registry
+- ✅ Multi-stage Docker build (optimized image size)
+- ✅ Auto-cleanup of orphan containers on redeploy
+- ✅ Health checks enabled
+- ✅ Nginx with compression and security headers
 
-### Jenkins
-- Jenkins 2.300+
-- Docker support
-- AWS credentials
-
-## ⚡ Key Steps Overview
-
-### 1. Prepare Environment
-```bash
-# Copy images to src directory
-mkdir src/image
-cp image/* src/image/
-```
-
-### 2. Local Testing
-```bash
-docker-compose up -d
-# Test at http://localhost:8080
-docker-compose down
-```
-
-### 3. Push to Registry
-```bash
-docker build -t zomato-clone:latest .
-docker tag zomato-clone:latest YOUR_ECR_URL/zomato-clone:latest
-docker push YOUR_ECR_URL/zomato-clone:latest
-```
-
-### 4. Setup Jenkins
-- Create Pipeline job
-- Add GitHub webhook
-- Configure AWS credentials
-- Deploy on push
-
-### 5. Deploy on AWS
-- Create ECS cluster/service
-- Configure load balancer
-- Monitor with CloudWatch
-
-## 📖 Full Deployment Steps
-
-**For complete step-by-step instructions, see [DEPLOYMENT.md](docs/DEPLOYMENT.md)**
-
-Key sections:
-- Docker local setup
-- Registry push (DockerHub/ECR)
-- Jenkins pipeline configuration
-- AWS ECS/EC2 deployment
-- Monitoring & troubleshooting
-
-## 🔐 Security
-
-✅ Non-root Docker user
-✅ Security headers (X-Frame-Options, etc.)
-✅ Health checks enabled
-✅ AWS IAM roles
-✅ HTTPS ready
-
-## 📊 Monitoring
-
-- **Logs**: `docker logs container-name`
-- **CloudWatch**: `aws logs tail /ecs/zomato --follow`
-- **Jenkins**: Dashboard → Job → Console
+---
 
 ## 🛠️ Troubleshooting
 
 | Issue | Solution |
-|-------|----------|
-| Port in use | Change port in docker-compose.yml |
-| Build fails | Check Dockerfile, ensure files in src/ |
-| ECR push fails | Verify AWS credentials, IAM permissions |
-| Pipeline fails | Check Jenkins console, GitHub token |
-
-## 📝 Original Features
-
-- Clean, responsive layout for restaurants
-- Image-based cards and headers
-- Demo navigation pages
-- Modern CSS styling
-
-## 🎯 Now With DevOps!
-
-- ✅ Containerized
-- ✅ Production deployment
-- ✅ Automated CI/CD
-- ✅ Cloud-ready
-- ✅ Enterprise scalable
+|---|---|
+| Port 8080 already in use | `docker ps` → stop conflicting container |
+| Pipeline fails at Docker build | Check Dockerfile and src/ directory |
+| DockerHub push fails | Verify `dockerhubcred` in Jenkins credentials |
+| Container won't start | Check `docker compose logs` |
 
 ---
 
-**Last Updated**: 2024 | **Version**: 2.0 (With Docker & Jenkins)
-**Status**: ✅ Ready for Production Deployment
+## 👨‍💻 Author
+
+**Himanshu Gupta**
+[GitHub](https://github.com/himanshu1029g) | DevOps Enthusiast
+
+---
+
+**Version**: 3.0 | **Status**: ✅ Pipeline Working & Image Live on DockerHub
+
+
+
