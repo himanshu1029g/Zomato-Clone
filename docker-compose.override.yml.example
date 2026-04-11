@@ -1,0 +1,28 @@
+# ==========================================
+# Docker Compose Override - Local Development
+# ==========================================
+# This file is for local development overrides
+# Copy to docker-compose.override.yml and adjust as needed
+# This file is IGNORED in .gitignore for local customization
+
+version: '3.8'
+
+services:
+  web:
+    # For local development, you can build from local Dockerfile
+    # instead of pulling from DockerHub
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    # Uncomment for debugging with longer timeouts
+    # environment:
+    #   - DEBUG=true
+    
+    # Volume mount for live reload (if using a bundler)
+    # volumes:
+    #   - ./src:/usr/share/nginx/html:ro
+    
+    # Use localhost for development
+    ports:
+      - "3000:80"  # Different port for dev to avoid conflicts
