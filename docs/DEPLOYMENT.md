@@ -1,27 +1,33 @@
-# 🐳 Zomato Clone - Docker & Jenkins Deployment Guide
+# 🐳 Zomato Clone - Complete Deployment Guide
 
 ## Project Structure Overview
 
 ```
 Zomato_Clone/
 ├── src/                          # Application source files
-│   ├── index.html
-│   ├── just.html
-│   ├── style.css
-│   ├── image/                    # Static assets (copy images here)
-│   └── ...
+│   ├── index.html                # Landing page
+│   ├── just.html                 # Secondary page
+│   ├── style.css                 # Styling
+│   ├── image/                    # Static assets
+│   ├── miantop.avif              # Hero image 1
+│   └── miantop2.avif             # Hero image 2
 ├── nginx/
-│   └── nginx.conf                # Nginx web server config
+│   └── nginx.conf                # Optimized web server config
 ├── docs/
 │   ├── DEPLOYMENT.md             # This file
-│   ├── DOCKER_SETUP.md           # Docker quick start
-│   └── JENKINS_CI-CD.md          # Jenkins pipeline setup
-├── Dockerfile                    # Docker image definition
-├── docker-compose.yml            # Multi-container orchestration
-├── .dockerignore                 # Files to exclude from Docker build
-├── .gitignore
+│   ├── DOCKER_SETUP.md           # Quick Docker start
+│   ├── JENKINS_CI-CD.md          # CI/CD pipeline guide
+│   └── SETUP_CHECKLIST.md        # Pre-deployment checklist
+├── Dockerfile                    # Multi-stage Docker build
+├── Jenkinsfile                   # Jenkins CI/CD pipeline
+├── docker-compose.yml            # Container orchestration
+├── docker-compose.override.yml.example  # Dev overrides
+├── .dockerignore                 # Files to exclude from build
+├── .gitignore                    # Git ignore rules
 ├── .env.example                  # Environment variables template
-└── README.md
+├── LICENSE                       # MIT License
+├── CONTRIBUTING.md               # Contribution guidelines
+└── README.md                     # Project documentation
 ```
 
 ---
@@ -32,41 +38,60 @@ Zomato_Clone/
 - Docker Desktop installed (Windows, Mac) or Docker Engine (Linux)
 - Docker Compose v3.8+
 - Git installed
+- 200 MB free disk space
 
-### Step 1: Copy Images to src/image Directory
+### Step 1: Clone Repository
 ```bash
-# Navigate to project root
-cd d:\Projects\Zomato_Clone
+# Clone the repository
+git clone https://github.com/himanshu1029g/Zomato-Clone.git
+cd Zomato-Clone
 
-# If you haven't already, copy images from root to src/
-mkdir src\image
-copy miantop.avif src\image\
-copy miantop2.avif src\image\
-# Copy all other images from the image/ folder to src/image/
+# Verify project structure
+ls -la
 ```
 
 ### Step 2: Build Docker Image Locally
 ```bash
-# Test build locally
-docker build -t zomato-clone:latest .
+# Navigate to project root
+cd d:\Projects\Zomato_Clone
 
-# Check if build was successful
-docker images | grep zomato-clone
+# Build Docker image
+docker build -t zomato_clone:latest .
+
+# Verify build was successful
+docker images | grep zomato_clone
+```
+
+**Expected Output:**
+```
+REPOSITORY      TAG       IMAGE ID      SIZE
+zomato_clone    latest    a1b2c3d4e5    40MB
 ```
 
 ### Step 3: Run Container Locally
-```bash
-# Option A: Using docker run
-docker run -d \
-  --name zomato-local \
-  -p 8080:80 \
-  zomato-clone:latest
 
-# Option B: Using docker-compose (recommended)
+**Option A: Using Docker Compose (Recommended)**
+```bash
+# Start container with docker-compose
 docker-compose up -d
 
 # Verify container is running
-docker ps
+docker-compose ps
+
+# View logs
+docker-compose logs -f web
+```
+
+**Option B: Using Docker Run**
+```bash
+# Run container directly
+docker run -d \
+  --name zomato-local \
+  -p 8080:80 \
+  zomato_clone:latest
+
+# Verify container is running
+docker ps | grep zomato
 ```
 
 ### Step 4: Test Application
@@ -74,14 +99,25 @@ docker ps
 # Open browser and navigate to:
 http://localhost:8080
 
-# Check logs
+# Or test via curl
+curl http://localhost:8080
+
+# Check container logs
 docker logs zomato-local
 
-# Health check
-curl http://localhost:8080
+# Verify health check
+docker ps | grep zomato  # HEALTHCHECK column
 ```
 
-### Step 5: Stop Container
+### Step 5: Verify Features
+- ✅ Homepage loads
+- ✅ All images display correctly
+- ✅ CSS styling applied
+- ✅ No console errors
+- ✅ Links work properly
+- ✅ Responsive on mobile/tablet/desktop
+
+### Step 6: Stop Container
 ```bash
 # Using docker-compose
 docker-compose down
@@ -93,111 +129,379 @@ docker rm zomato-local
 
 ---
 
-## Part 2: Push to Docker Registry (DockerHub/ECR)
+## Part 2: Push to DockerHub
 
-### Option A: DockerHub
+### Prerequisites
+- DockerHub account (free at https://hub.docker.com)
+- Docker CLI configured
+- Image already built locally
 
+### Step 1: Create DockerHub Repository
+
+1. Go to https://hub.docker.com
+2. Sign in with your account
+3. Click **Repositories** → **Create repository**
+4. Fill in:
+   - **Name**: `zomato-clone`
+   - **Description**: "Zomato clone UI with Jenkins CI/CD pipeline"
+   - **Visibility**: Public
+   - Click **Create**
+
+### Step 2: Login to DockerHub via Docker CLI
 ```bash
-# Step 1: Login to DockerHub
+# Login to DockerHub
 docker login
-# Enter username and password
 
-# Step 2: Tag image
-docker tag zomato-clone:latest YOUR_DOCKERHUB_USERNAME/zomato-clone:latest
-docker tag zomato-clone:latest YOUR_DOCKERHUB_USERNAME/zomato-clone:v1.0
-
-# Step 3: Push to registry
-docker push YOUR_DOCKERHUB_USERNAME/zomato-clone:latest
-docker push YOUR_DOCKERHUB_USERNAME/zomato-clone:v1.0
-
-# Verify on DockerHub
-# Visit: https://hub.docker.com/r/YOUR_DOCKERHUB_USERNAME/zomato-clone
+# Enter your DockerHub username and password
+# Or use a personal access token (recommended)
 ```
 
-### Option B: AWS ECR (Recommended for Jenkins CI/CD)
-
+### Step 3: Tag Image for DockerHub
 ```bash
-# Step 1: Create ECR repository in AWS
-aws ecr create-repository \
-  --repository-name zomato-clone \
-  --region us-east-1
+# Tag local image for DockerHub
+docker tag zomato_clone:latest YOUR_USERNAME/zomato_clone:latest
+docker tag zomato_clone:latest YOUR_USERNAME/zomato_clone:v1.0
 
-# Step 2: Login to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin YOUR_AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+# Verify tags
+docker images | grep zomato_clone
+```
 
-# Step 3: Tag image for ECR
-docker tag zomato-clone:latest YOUR_AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/zomato-clone:latest
-docker tag zomato-clone:latest YOUR_AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/zomato-clone:v1.0
+**Example with actual username:**
+```bash
+docker tag zomato_clone:latest him1029g/zomato_clone:latest
+docker tag zomato_clone:latest him1029g/zomato_clone:v1.0
+```
 
-# Step 4: Push to ECR
-docker push YOUR_AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/zomato-clone:latest
-docker push YOUR_AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/zomato-clone:v1.0
+### Step 4: Push to DockerHub
+```bash
+# Push image to DockerHub
+docker push YOUR_USERNAME/zomato_clone:latest
+docker push YOUR_USERNAME/zomato_clone:v1.0
 
-# Verify in AWS Console
-# Go to: ECR → Repositories → zomato-clone
+# Track progress
+# Layer 1: 100%
+# Layer 2: 100%
+# Digest: sha256:xxxxxxxxxxxxx
+```
+
+### Step 5: Verify on DockerHub
+1. Visit: https://hub.docker.com/r/YOUR_USERNAME/zomato_clone
+2. Check:
+   - ✅ Image appears in repository
+   - ✅ Tags listed (latest, v1.0)
+   - ✅ Image size: ~25.42 MB
+   - ✅ OS/Arch: linux/amd64
+   - ✅ Pulls counter updated
+
+### Step 6: Pull Image from DockerHub (Anywhere)
+```bash
+# Pull from DockerHub
+docker pull YOUR_USERNAME/zomato_clone:latest
+
+# Run on another machine
+docker run -d -p 8080:80 YOUR_USERNAME/zomato_clone:latest
 ```
 
 ---
 
-## Part 3: Jenkins CI/CD Pipeline Setup
+## Part 3: Deploy on AWS EC2
 
 ### Prerequisites
-- Jenkins server running (local or cloud)
-- Jenkins plugins: Git, Docker, AWS
-- Docker installed on Jenkins agent
-- AWS credentials configured in Jenkins
+- AWS account with EC2 access
+- EC2 instance running Ubuntu (t3.small or larger)
+- Docker installed on EC2
+- Security group allows port 8080
 
-### Step 1: Create Jenkins Job
+### Step 1: Connect to EC2 Instance
+```bash
+# SSH into EC2 (from your local machine)
+ssh -i your-key.pem ubuntu@EC2_PUBLIC_IP
 
-1. **Login to Jenkins Dashboard**
-   - URL: `http://your-jenkins-url:8080`
+# Example:
+ssh -i zomato-key.pem ubuntu@16.16.124.83
+```
 
-2. **Create New Pipeline Job**
-   - Click "New Item"
-   - Name: `zomato-clone-pipeline`
-   - Select: "Pipeline"
-   - Click "OK"
+### Step 2: Install Docker on EC2 (if not already installed)
+```bash
+# Update system
+sudo apt update && sudo apt upgrade -y
 
-### Step 2: Configure Pipeline
+# Install Docker
+sudo apt install docker.io -y
 
-**See JENKINS_CI-CD.md for detailed Jenkinsfile setup**
+# Install Docker Compose
+sudo apt install docker-compose -y
 
-Or create `Jenkinsfile` in project root with this content:
+# Add ubuntu user to docker group
+sudo usermod -aG docker ubuntu
 
-```groovy
-pipeline {
-    agent any
-    
-    environment {
-        DOCKER_REGISTRY = 'YOUR_AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com'
-        ECR_REPO = 'zomato-clone'
-        TAG = "${BUILD_NUMBER}"
-    }
-    
-    stages {
-        stage('Checkout') {
-            steps {
-                git 'https://github.com/YOUR_GITHUB/zomato-clone.git'
-            }
-        }
-        
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    sh 'docker build -t ${DOCKER_REGISTRY}/${ECR_REPO}:${TAG} .'
-                    sh 'docker tag ${DOCKER_REGISTRY}/${ECR_REPO}:${TAG} ${DOCKER_REGISTRY}/${ECR_REPO}:latest'
-                }
-            }
-        }
-        
-        stage('Push to ECR') {
-            steps {
-                script {
-                    sh '''
-                        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${DOCKER_REGISTRY}
-                        docker push ${DOCKER_REGISTRY}/${ECR_REPO}:${TAG}
-                        docker push ${DOCKER_REGISTRY}/${ECR_REPO}:latest
-                    '''
+# Verify installation
+docker --version
+docker-compose --version
+```
+
+### Step 3: Clone Repository on EC2
+```bash
+# Navigate to home directory
+cd ~
+
+# Clone repository
+git clone https://github.com/himanshu1029g/Zomato-Clone.git
+
+# Navigate to project
+cd Zomato-Clone
+```
+
+### Step 4: Create docker-compose.yml on EC2
+```bash
+# The file already exists, just verify
+cat docker-compose.yml
+```
+
+### Step 5: Pull and Run Image from DockerHub
+```bash
+# Pull latest image from DockerHub
+docker pull YOUR_USERNAME/zomato_clone:latest
+
+# Or run directly (pulls automatically)
+docker-compose up -d
+
+# Verify container is running
+docker-compose ps
+
+# Check logs
+docker-compose logs web
+```
+
+### Step 6: Access Application on EC2
+```bash
+# From your local machine, open browser:
+http://EC2_PUBLIC_IP:8080
+
+# Example:
+http://16.16.124.83:8080
+```
+
+### Step 7: Configure Auto-Restart (Optional)
+```bash
+# Enable container restart on EC2 reboot
+docker update --restart=unless-stopped zomato-app
+
+# Verify
+docker inspect zomato-app | grep RestartPolicy
+```
+
+---
+
+## Part 4: Jenkins CI/CD Pipeline Deployment
+
+### How It Works
+
+```
+1. Code Push to GitHub (main branch)
+        ↓
+2. GitHub sends webhook to Jenkins
+        ↓
+3. Jenkins Pipeline Triggered Automatically
+        ↓
+4. Stage 1: Clone code from GitHub
+            ↓
+5. Stage 2: Build Docker image
+            ↓
+6. Stage 3: Test & validate image
+            ↓
+7. Stage 4: Push to DockerHub
+            ↓
+8. Stage 5: Deploy via Docker Compose on EC2
+            ↓
+9. Application Live ✅
+```
+
+### Jenkins Setup (See JENKINS_CI-CD.md for details)
+
+1. Create Jenkins job from Jenkinsfile
+2. Configure GitHub webhook
+3. Add DockerHub credentials (ID: `dockerhubcred`)
+4. Test pipeline with "Build Now"
+5. Setup automatic triggers
+
+### Trigger Deployment
+```bash
+# Simply push code to GitHub main branch
+git add .
+git commit -m "Fix: update homepage layout"
+git push origin main
+
+# Jenkins automatically:
+# - Detects push via webhook
+# - Builds Docker image
+# - Pushes to DockerHub
+# - Deploys to EC2
+# - App is live in ~8-10 seconds!
+```
+
+---
+
+## Monitoring & Maintenance
+
+### Check Application Status
+```bash
+# On EC2, check container status
+docker-compose ps
+
+# View container logs
+docker-compose logs --tail=100 web
+
+# Real-time logs
+docker-compose logs -f web
+```
+
+### Update Application
+
+**Option 1: Pull latest from DockerHub**
+```bash
+docker-compose pull
+docker-compose up -d
+```
+
+**Option 2: Push code to GitHub** (Auto-deploy via Jenkins)
+```bash
+git push origin main
+# Jenkins pipeline runs automatically
+```
+
+### Backup Application Data
+```bash
+# Docker doesn't store persistent data in this project,
+# but you can backup source code:
+tar -czf zomato-backup-$(date +%Y%m%d).tar.gz ~/Zomato-Clone/
+```
+
+### Stop Application
+```bash
+# Stop containers gracefully
+docker-compose down
+
+# Remove containers and images
+docker-compose down --rmi all
+```
+
+---
+
+## Performance Optimization
+
+### Memory Usage (In Production)
+```bash
+# Set memory limits in docker-compose.yml
+services:
+  web:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+```
+
+### Enable Gzip Compression
+✅ Already configured in nginx.conf
+- Reduces response size by 70-80%
+- Transparent to browser
+- Automatic compression
+
+### Cache Static Assets
+✅ Already configured
+- 7-day cache for images, CSS, JS
+- Reduces bandwidth usage
+- Improves page load time
+
+### Health Checks
+✅ Already enabled
+- Checks every 30 seconds
+- Automatically restarts on failure
+- Prevents zombie containers
+
+---
+
+## Troubleshooting Deployment
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| **Port 8080 in use** | Another service running | `lsof -i :8080` then kill process |
+| **Container won't start** | Image pull failed | `docker pull USERNAME/zomato_clone` manually |
+| **Connection refused** | Nginx not responding | `docker logs zomato-app` check errors |
+| **Out of disk space** | Too many images | `docker system prune -a` |
+| **High memory usage** | No limits set | Add resource limits in docker-compose.yml |
+| **Slow performance** | Gzip disabled | Verify nginx.conf has gzip on |
+| **Cannot access from outside** | Security group blocked | Allow port 8080 in AWS security group |
+
+### Debug Commands
+```bash
+# Check everything
+docker-compose ps
+docker-compose logs web
+docker stats
+
+# Test connectivity
+curl http://localhost:8080
+curl http://EC2_IP:8080
+
+# Inspect image
+docker inspect YOUR_USERNAME/zomato_clone:latest
+
+# Verify configuration
+docker-compose config
+```
+
+---
+
+## Production Checklist
+
+- [ ] Image tested locally with docker-compose
+- [ ] Image pushed to DockerHub successfully
+- [ ] EC2 instance has Docker installed
+- [ ] Security group allows port 8080
+- [ ] Jenkins pipeline configured and tested
+- [ ] GitHub webhook working
+- [ ] Health checks enabled and passing
+- [ ] Logs monitored for errors
+- [ ] Backup strategy in place
+- [ ] Application accessible from internet
+
+---
+
+## Quick Reference
+
+| Command | Purpose |
+|---------|---------|
+| `docker build -t zomato_clone:latest .` | Build locally |
+| `docker-compose up -d` | Start container |
+| `docker-compose down` | Stop container |
+| `docker push USERNAME/zomato_clone:latest` | Push to DockerHub |
+| `docker pull USERNAME/zomato_clone:latest` | Pull from DockerHub |
+| `docker-compose logs -f web` | View live logs |
+| `docker stats` | Monitor resources |
+| `docker-compose ps` | Check status |
+
+---
+
+## Next Steps
+
+1. ✅ Setup local Docker environment
+2. ✅ Build and test image locally
+3. ✅ Push to DockerHub
+4. ✅ Setup EC2 instance
+5. ✅ Deploy on EC2
+6. ✅ Configure Jenkins pipeline
+7. ✅ Setup GitHub webhook
+8. ✅ Monitor and maintain
+
+---
+
+## Need Help?
+
+- Check [README.md](../README.md) for overview
+- See [JENKINS_CI-CD.md](./JENKINS_CI-CD.md) for pipeline details
+- Review [SETUP_CHECKLIST.md](./SETUP_CHECKLIST.md) for step-by-step guide
+- Check [DOCKER_SETUP.md](./DOCKER_SETUP.md) for quick Docker start
                 }
             }
         }

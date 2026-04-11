@@ -3,21 +3,23 @@
 ## Architecture Overview
 
 ```
-GitHub Push
+GitHub Push (main branch)
     ↓
 GitHub Webhook
     ↓
-Jenkins Pipeline Triggered
+Jenkins Pipeline Triggered (Agent: "vinod")
     ↓
-Checkout Code
+Stage 1: Checkout Code from GitHub
     ↓
-Build Docker Image
+Stage 2: Build Docker Image (Multi-stage)
     ↓
-Push to AWS ECR
+Stage 3: Validate & Test
     ↓
-Deploy to ECS/EC2
+Stage 4: Push to DockerHub (him1029g/zomato_clone)
     ↓
-Health Check & Verify
+Stage 5: Deploy via Docker Compose
+    ↓
+Health Check & Application Live 🚀
 ```
 
 ---
@@ -28,33 +30,26 @@ Health Check & Verify
    - Jenkins 2.300+ installed
    - Running with Docker support
    - Java 11+ installed
+   - Docker installed on Jenkins agent node
 
-2. **Jenkins Plugins**
+2. **Jenkins Plugins Required**
    - Docker Pipeline
-   - Amazon ECR plugin
    - GitHub plugin
-   - AWS Steps
+   - Pipeline: Stage View
+   - Log Parser (optional)
 
 3. **Credentials Setup in Jenkins**
 
-### Add Docker Registry Credentials
+### Add DockerHub Credentials
 ```
-Jenkins → Manage Credentials → Systems → Global Credentials
+Jenkins → Manage Jenkins → Manage Credentials → Systems → Global Credentials
 Add Credentials → Username with password
-ID: ecr-credentials
-Username: AWS
-Password: YOUR_AWS_ACCESS_KEY
+ID: dockerhubcred
+Username: your_dockerhub_username
+Password: your_dockerhub_password (or token)
 ```
 
-### Add AWS Credentials
-```
-Add Credentials → AWS Credentials
-ID: aws-creds
-Access Key ID: YOUR_KEY
-Secret Access Key: YOUR_SECRET
-```
-
-### Add GitHub Credentials
+### Add GitHub Credentials (Optional - for private repos)
 ```
 Add Credentials → GitHub Personal Access Token
 ID: github-token
@@ -67,242 +62,300 @@ Token: YOUR_GITHUB_TOKEN
 
 ### Step 1: Create New Job
 1. Click **New Item**
-2. Enter name: `zomato-clone-pipeline`
+2. Enter name: `Declarative Pipeline` (or any name you prefer)
 3. Select **Pipeline**
 4. Click **OK**
 
-### Step 2: Configure Pipeline
+### Step 2: Configure Pipeline Source
 
 **Pipeline Definition:**
 - Select: **Pipeline script from SCM**
 - SCM: **Git**
-- Repository URL: `https://github.com/YOUR_GITHUB/zomato-clone.git`
-- Credentials: Select **github-token**
+- Repository URL: `https://github.com/himanshu1029g/Zomato-Clone.git`
+- Credentials: Leave blank (public repo) or select GitHub credentials if private
 - Branch: `*/main`
 - Script Path: `Jenkinsfile`
 
 ### Step 3: Build Triggers
 
-Check **GitHub hook trigger for GITScm polling**
+✅ Check: **GitHub hook trigger for GITScm polling**
 
-Or Manual: Click **Build Now**
+This enables automatic builds when you push to GitHub main branch.
+
+### Step 4: Test the Pipeline
+
+Click **Build Now** to test manually, or push code to GitHub to trigger via webhook.
 
 ---
 
-## Jenkinsfile Configuration
+## The Jenkinsfile Explained
 
-Create `Jenkinsfile` in project root:
+Your project already has a `Jenkinsfile` in the root directory with this structure:
+
+### Pipeline Overview
 
 ```groovy
-#!/usr/bin/env groovy
-
 pipeline {
-    agent any
-    
-    environment {
-        AWS_REGION = 'us-east-1'
-        AWS_ACCOUNT_ID = credentials('aws-account-id')
-        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-        ECR_REPO = 'zomato-clone'
-        IMAGE_TAG = "${BUILD_NUMBER}"
-        GITHUB_REPO = 'YOUR_GITHUB/zomato-clone'
-    }
-    
-    options {
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 30, unit: 'MINUTES')
-        timestamps()
-    }
+    agent { label "vinod" }    // Runs on Jenkins Agent named "vinod"
     
     stages {
-        stage('📥 Checkout') {
-            steps {
-                script {
-                    echo "Checking out code from GitHub..."
-                }
-                checkout scm
-            }
-        }
-        
-        stage('🧹 Clean') {
-            steps {
-                script {
-                    echo "Cleaning Docker environment..."
-                    sh 'docker system prune -f --volumes || true'
-                }
-            }
-        }
-        
-        stage('🔨 Build Docker Image') {
-            steps {
-                script {
-                    echo "Building Docker image..."
-                    sh '''
-                        docker build \
-                            -t ${ECR_REPO}:${IMAGE_TAG} \
-                            -t ${ECR_REPO}:latest \
-                            .
-                    '''
-                    sh 'docker images | grep zomato-clone'
-                }
-            }
-        }
-        
-        stage('✅ Test') {
-            steps {
-                script {
-                    echo "Running container tests..."
-                    sh '''
-                        docker run -d \
-                            --name zomato-test \
-                            -p 9090:80 \
-                            ${ECR_REPO}:latest
-                        
-                        sleep 5
-                        
-                        # Health check
-                        if curl -f http://localhost:9090 > /dev/null; then
-                            echo "✓ Health check passed"
-                        else
-                            echo "✗ Health check failed"
-                            docker logs zomato-test
-                            exit 1
-                        fi
-                        
-                        docker stop zomato-test
-                        docker rm zomato-test
-                    '''
-                }
-            }
-        }
-        
-        stage('🔐 AWS Login') {
-            steps {
-                script {
-                    echo "Logging in to AWS ECR..."
-                    withAWS(credentials: 'aws-creds', region: '${AWS_REGION}') {
-                        sh '''
-                            aws ecr get-login-password --region ${AWS_REGION} | \
-                            docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                        '''
-                    }
-                }
-            }
-        }
-        
-        stage('🏷️ Tag & Push to ECR') {
-            steps {
-                script {
-                    echo "Pushing image to ECR..."
-                    sh '''
-                        docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
-                        docker tag ${ECR_REPO}:latest ${ECR_REGISTRY}/${ECR_REPO}:latest
-                        
-                        docker push ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
-                        docker push ${ECR_REGISTRY}/${ECR_REPO}:latest
-                        
-                        echo "Image push complete!"
-                        aws ecr describe-images --repository-name ${ECR_REPO} --region ${AWS_REGION}
-                    '''
-                }
-            }
-        }
-        
-        stage('🚀 Deploy to ECS') {
-            steps {
-                script {
-                    echo "Updating ECS service..."
-                    withAWS(credentials: 'aws-creds', region: '${AWS_REGION}') {
-                        sh '''
-                            aws ecs update-service \
-                                --cluster zomato-cluster \
-                                --service zomato-service \
-                                --force-new-deployment \
-                                --region ${AWS_REGION}
-                            
-                            echo "Waiting for service to stabilize..."
-                            sleep 10
-                            
-                            aws ecs describe-services \
-                                --cluster zomato-cluster \
-                                --services zomato-service \
-                                --region ${AWS_REGION}
-                        '''
-                    }
-                }
-            }
-        }
-        
-        stage('📊 Verify Deployment') {
-            steps {
-                script {
-                    echo "Verifying deployment..."
-                    withAWS(credentials: 'aws-creds', region: '${AWS_REGION}') {
-                        sh '''
-                            TASK_ID=$(aws ecs list-tasks --cluster zomato-cluster --region ${AWS_REGION} --query 'taskArns[0]' --output text)
-                            
-                            if [ -z "$TASK_ID" ]; then
-                                echo "No running tasks found"
-                                exit 1
-                            fi
-                            
-                            echo "Running task: $TASK_ID"
-                            
-                            for i in {1..30}; do
-                                STATUS=$(aws ecs describe-tasks --cluster zomato-cluster --tasks $TASK_ID --region ${AWS_REGION} --query 'tasks[0].lastStatus' --output text)
-                                echo "Task status: $STATUS"
-                                
-                                if [ "$STATUS" = "RUNNING" ]; then
-                                    echo "✓ Service deployed successfully!"
-                                    exit 0
-                                fi
-                                
-                                sleep 10
-                            done
-                            
-                            echo "✗ Deployment verification timeout"
-                            exit 1
-                        '''
-                    }
-                }
-            }
-        }
-        
-        stage('🧹 Cleanup') {
-            steps {
-                script {
-                    echo "Cleaning up..."
-                    sh '''
-                        docker rmi ${ECR_REPO}:${IMAGE_TAG} ${ECR_REPO}:latest || true
-                        docker image prune -f || true
-                    '''
-                }
-            }
-        }
+        stage("📋 Code") { }           // Clone from GitHub
+        stage("🔨 Build") { }          // Build Docker image
+        stage("🧪 Test") { }           // Validate image
+        stage("📤 Push to DockerHub") { }  // Push to registry
+        stage("🚀 Deployment") { }     // Deploy with Docker Compose
     }
     
-    post {
-        always {
-            script {
-                echo "Pipeline execution completed"
-            }
+    post { }                   // Success/Failure notifications
+}
+```
+
+---
+
+## Stage Details
+
+### Stage 1️⃣: Code (Clone Repository)
+```groovy
+stage("📋 Code") {
+    steps {
+        git url: "https://github.com/himanshu1029g/Zomato-Clone.git", 
+            branch: "main"
+    }
+}
+```
+**What it does:**
+- Clones the latest code from `main` branch
+- Runs on agent node "vinod"
+- Takes ~1-3 seconds
+
+---
+
+### Stage 2️⃣: Build (Docker Build)
+```groovy
+stage("🔨 Build") {
+    steps {
+        sh "docker build -t zomato_clone:latest ."
+    }
+}
+```
+**What it does:**
+- Executes multi-stage Docker build from `Dockerfile`
+- Creates image: `zomato_clone:latest`
+- Size: ~40MB (optimized with Alpine Linux)
+- Takes ~400-500ms
+
+---
+
+### Stage 3️⃣: Test (Validation)
+```groovy
+stage("🧪 Test") {
+    steps {
+        // Validates Docker image and Dockerfile syntax
+    }
+}
+```
+**What it does:**
+- Validates image was created successfully
+- Checks Dockerfile syntax
+- Can add container tests here
+- Takes ~70-80ms
+
+---
+
+### Stage 4️⃣: Push to DockerHub
+```groovy
+stage("📤 Push to DockerHub") {
+    steps {
+        withCredentials([usernamePassword(
+            credentialsId: "dockerhubcred",
+            passwordVariable: "dockerHubPass",
+            usernameVariable: "dockerHubUser"
+        )]) {
+            sh '''
+                docker login -u ${dockerHubUser} -p ${dockerHubPass}
+                docker tag zomato_clone:latest him1029g/zomato_clone:latest
+                docker push him1029g/zomato_clone:latest
+            '''
         }
-        
-        success {
-            script {
-                echo "✓ Deployment successful!"
-                // Optional: Send notifications
-                // slackSend(color: 'good', message: 'Zomato Clone deployed successfully')
-            }
-        }
-        
-        failure {
-            script {
-                echo "✗ Deployment failed!"
-                // Optional: Send notifications
-                // slackSend(color: 'danger', message: 'Zomato Clone deployment failed')
-            }
-        }
+    }
+}
+```
+**What it does:**
+- Authenticates with DockerHub using credentials
+- Tags image: `him1029g/zomato_clone:latest`
+- Pushes to DockerHub public registry
+- Image available at: https://hub.docker.com/r/him1029g/zomato_clone
+- Takes ~2-3 seconds
+
+---
+
+### Stage 5️⃣: Deployment (Docker Compose)
+```groovy
+stage("🚀 Deployment") {
+    steps {
+        sh '''
+            docker compose down --remove-orphans || true
+            docker compose up -d
+        '''
+    }
+}
+```
+**What it does:**
+- Stops and removes old containers safely
+- Pulls latest image from DockerHub
+- Starts new container via `docker-compose.yml`
+- Application accessible at `http://localhost:8080` (or EC2 IP)
+- Takes ~1 second
+
+---
+
+## Pipeline Execution Flow
+
+```
+┌─────────────────────────────────────────────────┐
+│ GitHub Webhook Trigger (on push to main)        │
+└────────────────────┬────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────┐
+│ Jenkins Job: "Declarative Pipeline" Starts      │
+└────────────────────┬────────────────────────────┘
+                     │
+        ┌────────────┼────────────┬────────────────┬──────────────┐
+        ▼            ▼            ▼                ▼              ▼
+   ┌─────────┐  ┌─────────┐  ┌──────────┐    ┌──────────────┐  ┌──────────┐
+   │  Code   │  │  Build  │  │  Test    │    │  Push to     │  │ Deploy   │
+   │ Clone   │  │ Docker  │  │Validate  │    │DockerHub     │  │via       │
+   │ 1-3s    │  │ 412ms   │  │ 78ms     │    │ 2-3s         │  │Compose   │
+   │         │  │         │  │          │    │              │  │ 1s       │
+   └────┬────┘  └────┬────┘  └────┬─────┘    └──────┬───────┘  └────┬─────┘
+        │            │            │                 │               │
+        └────────────┴────────────┴─────────────────┴───────────────┘
+                     │
+                     ▼
+         ┌───────────────────────────────┐
+         │ Pipeline Complete ✅           │
+         │ Total Time: ~8-10 seconds     │
+         │ App Live at Port 8080          │
+         └───────────────────────────────┘
+```
+
+---
+
+## GitHub Webhook Setup (Automated Triggers)
+
+### Step 1: Get Jenkins Webhook URL
+```
+Jenkins_URL/github-webhook/
+Example: http://16.16.124.83:8080/github-webhook/
+```
+
+### Step 2: Add Webhook to GitHub
+1. Go to: GitHub Repository → Settings → Webhooks
+2. Click: **Add webhook**
+3. Fill in:
+   - **Payload URL**: `http://your-jenkins:8080/github-webhook/`
+   - **Content type**: `application/json`
+   - **Events**: Select "Push events"
+   - **Active**: ✅ Check
+
+### Step 3: Test Webhook
+- Push code to main branch
+- Jenkins should automatically trigger build
+- Check Jenkins Console Output for logs
+
+---
+
+## Build Status & Monitoring
+
+### View Build Status
+1. Jenkins Dashboard → Job → Build History
+2. Click build number to see details
+3. Check Console Output for logs
+
+### Monitor Stages
+- Each stage shows duration
+- Green = Success ✅
+- Red = Failed ❌
+
+### Access Application
+- **Local**: `http://localhost:8080`
+- **AWS EC2**: `http://<EC2_IP>:8080`
+- **DockerHub**: https://hub.docker.com/r/him1029g/zomato_clone
+
+---
+
+## Troubleshooting
+
+### Build Fails at Code Stage
+```bash
+# Check GitHub URL
+git clone https://github.com/himanshu1029g/Zomato-Clone.git
+# Verify branch exists
+git branch -a
+```
+
+### Build Fails at Docker Build Stage
+```bash
+# Verify Dockerfile exists
+ls -l Dockerfile
+# Test build locally
+docker build -t zomato_clone:latest .
+```
+
+### Push to DockerHub Fails
+```bash
+# Check credentials
+Jenkins → Manage Credentials → Look for "dockerhubcred"
+# Test DockerHub login locally
+docker login
+docker push him1029g/zomato_clone:latest
+```
+
+### Deployment Fails
+```bash
+# Check docker-compose.yml
+docker-compose config
+# Test locally
+docker-compose up -d
+docker-compose logs web
+```
+
+---
+
+## Performance Metrics
+
+| Metric | Value |
+|--------|-------|
+| Average Code Stage | 1-3s |
+| Average Build Stage | 412ms |
+| Average Test Stage | 78ms |
+| Average Push Stage | 2-3s |
+| Average Deploy Stage | 1s |
+| **Total Pipeline Time** | **~8-10s** |
+| Simultaneous Builds | 1 (serial) |
+| Max Timeout | 30 minutes |
+
+---
+
+## Next Steps
+
+1. ✅ Verify Jenkins has Docker installed
+2. ✅ Add `dockerhubcred` credentials in Jenkins
+3. ✅ Create pipeline job pointing to Jenkinsfile
+4. ✅ Configure GitHub webhook
+5. ✅ Push code to trigger first build
+6. ✅ Monitor console output
+7. ✅ Access application at `http://localhost:8080`
+
+---
+
+## Documentation Links
+
+- [Jenkinsfile Reference](https://www.jenkins.io/doc/book/pipeline/jenkinsfile/)
+- [GitHub Webhook Setup](https://docs.github.com/en/developers/webhooks-and-events/webhooks/)
+- [Docker Pipeline Plugin](https://plugins.jenkins.io/docker-pipeline/)
+- [Jenkins Agent Setup](https://www.jenkins.io/doc/book/using/using-agents/)
     }
 }
 ```
